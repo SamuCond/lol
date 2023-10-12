@@ -1,0 +1,95 @@
+Samuel
+
+install.packages("DBI")
+install.packages("odbc")
+library(dplyr)
+library(DBI)
+library(dbplyr)
+library(odbc)
+install.packages("reshape")
+library(reshape)
+install.packages("sentimentr")
+library(sentimentr)
+
+
+
+options(scipen = 99)
+
+con <- DBI::dbConnect(odbc(),
+                      Driver = "SQL Server",
+                      Server = "mcobsql.business.nd.edu",
+                      UID = "MSBAstudent",
+                      PWD = "SQL%database!Mendoza",
+                      Port = 3306, 
+                      Database = "BookReviews")
+
+books <- dbReadTable(con, "books")
+reviews <- dbReadTable(con, "reviews")
+
+
+dbDisconnect(con)
+
+
+book_headlines <- merge(books,reviews,by = "BookID")
+
+# clean_book_reviews<- na.omit(book_headlines)
+# rm(reviews_book)
+# 
+# rm(book_sentiment_results)
+
+book_sentiment_results <- sentiment(book_headlines$Headline)
+
+book_sentiment_results[, list(avg_word_count = mean(word_count),
+                                 avg_sentiment = average_downweighted_zero
+                                 (sentiment)),
+                          by = element_id]
+
+
+# grouping sentences together to get an agg sentiment score
+grouped_sentences_sentiments <- book_sentiment_results %>%
+  group_by(element_id) %>%
+  summarise(avg_sentiment = mean(sentiment))
+
+
+# grouping them in specific categories
+grouped_sentences_sentiments <- grouped_sentences_sentiments %>%
+  mutate(sentiment_category =
+           cut(avg_sentiment, breaks = c(-3, -1.5, 0, 1, 2, Inf),
+               labels = c("Very Bad", "Bad",
+                          "Neutral", "Good",
+                          "Very Good")))
+
+book_headlines %>% column_to_rownames(., var = 'Headline')
+
+book_headlines$ID <- 1:nrow(book_headlines)
+overall_analysis <- merge(book_headlines,grouped_sentences_sentiments, by.x = "ID", by.y = "element_id")
+
+martian_sent <- overall_analysis %>%
+  filter(overall_analysis$Title == "The Martian") %>%
+  mutate(Title = "The Martian")
+
+
+gold_sent <- overall_analysis %>%
+  filter(overall_analysis$Title == "The Goldfinch") %>%
+  mutate(Title = "The Goldfinch")
+
+grey_sent <- overall_analysis %>%
+  filter(overall_analysis$Title == "Fifty Shades of Grey") %>%
+  mutate(Title = "Fifty Shades of Grey")
+
+library(ggplot2)
+
+graph1 <- ggplot(martian_sent, aes(x = Rating, y = avg_sentiment, color = sentiment_category))+
+  geom_point()+
+  theme_minimal()
+
+
+graph2 <- ggplot(gold_sent, aes(x = Rating, y = avg_sentiment, color = sentiment_category))+
+  geom_point()+
+  theme_minimal()
+
+
+graph3 <- ggplot(grey_sent, aes(x = Rating, y = avg_sentiment, color = sentiment_category))+
+  geom_point()+
+  theme_minimal()
+
